@@ -22,31 +22,23 @@ def extract_company_name(text):
         return text.split('-')[0].strip()
     return text.strip()
 
-# Function to match based on the first word
-def match_based_on_first_word(company_name, excel_data, threshold=80):
-    first_word = company_name.split()[0].lower().strip()  # Extract the first word
-    # Use fuzzy matching to find the closest match to the first word
-    choices = excel_data['Company'].apply(lambda x: x.split()[0].lower().strip()).tolist()
-    best_match, score = process.extractOne(first_word, choices)
-    
-    if score >= threshold:
-        matched_row = excel_data[excel_data['Company'].apply(lambda x: x.split()[0].lower().strip()) == best_match]
-        return matched_row.iloc[0] if not matched_row.empty else None
-    return None
-
-# Fuzzy matching function
-def fuzzy_match_company_name(company_name, excel_data, threshold=80):
+# Function to match based on the first word and choose the highest-paying match
+def match_highest_paying_company(company_name, excel_data, threshold=80):
     cleaned_name = clean_company_name(company_name)
-    # Create a list of cleaned company names from the excel data
+    
+    # Fuzzy matching for potential matches
     choices = excel_data['Company'].apply(clean_company_name).tolist()
+    matches = process.extract(cleaned_name, choices, limit=len(choices))
     
-    # Use fuzzy matching to find the closest match
-    best_match, score = process.extractOne(cleaned_name, choices)
+    # Filter matches based on the fuzzy threshold score
+    valid_matches = [match for match in matches if match[1] >= threshold]
     
-    if score >= threshold:  # Only consider matches above the threshold
-        matched_row = excel_data[excel_data['Company'].apply(clean_company_name) == best_match]
-        return matched_row.iloc[0] if not matched_row.empty else None
-    return match_based_on_first_word(company_name, excel_data, threshold)  # Fallback to first-word matching
+    if valid_matches:
+        # Filter the data to get rows that match the valid matches
+        matched_rows = excel_data[excel_data['Company'].apply(clean_company_name).isin([match[0] for match in valid_matches])]
+        # Return the row with the highest pay
+        return matched_rows.loc[matched_rows['Hourly Salary'].idxmax()]
+    return None
 
 # Function to calculate what percentage of companies are below the threshold
 def calculate_threshold_percentage(excel_data, threshold):
@@ -63,7 +55,7 @@ def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshol
     
     for internship in internships:
         company_name = extract_company_name(internship)
-        matched_row = fuzzy_match_company_name(company_name, excel_data, fuzzy_threshold)
+        matched_row = match_highest_paying_company(company_name, excel_data, fuzzy_threshold)
         
         if matched_row is not None:
             pay = matched_row['Hourly Salary']
@@ -76,9 +68,37 @@ def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshol
     
     return above_threshold, below_threshold, not_found
 
+# Function to check for duplicates with previously applied internships
+def check_already_applied(new_internships, applied_internships, fuzzy_threshold=95):
+    already_applied = []
+    
+    for new_internship in new_internships:
+        for applied in applied_internships:
+            # Use fuzzy matching to compare the new internship with the applied one
+            score = process.extractOne(new_internship, [applied])[1]
+            if score >= fuzzy_threshold:
+                already_applied.append((new_internship, applied, score))
+    
+    return already_applied
+
+# Function to write the combined table back to Excel
+def write_combined_to_excel(above_threshold, below_threshold, not_found, already_applied, output_file):
+    with pd.ExcelWriter(output_file, mode="w", engine="xlsxwriter") as writer:
+        # Create dataframes from the categorized data
+        above_df = pd.DataFrame(above_threshold, columns=["Company Info", "Hourly Pay"])
+        below_df = pd.DataFrame(below_threshold, columns=["Company Info", "Hourly Pay"])
+        not_found_df = pd.DataFrame(not_found, columns=["Company Info"])
+        already_applied_df = pd.DataFrame(already_applied, columns=["New Internship Info", "Already Applied Internship", "Fuzzy Match Score"])
+        
+        # Write each section into a separate sheet or different parts of the Excel file
+        above_df.to_excel(writer, sheet_name="Above Threshold", index=False)
+        below_df.to_excel(writer, sheet_name="Below Threshold", index=False)
+        not_found_df.to_excel(writer, sheet_name="Not Found", index=False)
+        already_applied_df.to_excel(writer, sheet_name="Already Applied", index=False)
+
 # Main Streamlit app
 def main():
-    st.title("Internship Salary Filter")
+    st.title("Internship Salary Checker with Fuzzy Matching")
     
     # Sidebar to specify the pay threshold
     st.sidebar.title("Settings")
@@ -92,6 +112,7 @@ def main():
     
     # File path for Excel data
     excel_file = "levels_data.xlsx"
+    output_file = "output_combined_data.xlsx"
 
     # Read the Excel data
     excel_data = read_excel_data(excel_file)
@@ -103,6 +124,19 @@ def main():
     percentage_above_threshold = calculate_threshold_percentage(excel_data, threshold)
     st.sidebar.write(f"Your threshold is in the top {percentage_above_threshold:.2f}% of company pays on Levels.fyi.")
 
+    # Display Levels data in the sidebar
+    st.sidebar.subheader("Levels.fyi Company Data:")
+    st.sidebar.dataframe(excel_data)
+
+    # Input for internships the user has already applied to
+    applied_internships_input = st.text_area(
+        "Paste the internships you've already applied to:",
+        height=150,
+        placeholder="Radix Trading - Summer 2025\nGoogle - SWE Intern\n..."
+    )
+    
+    applied_internships = applied_internships_input.strip().split('\n') if applied_internships_input else []
+    
     # User input for internship list
     internship_input = st.text_area(
         "Enter Internship Company Names and Info (One per line)",
@@ -142,6 +176,20 @@ def main():
             st.dataframe(not_found_df)
         else:
             st.info("All internships were found in the data.")
+
+        # Check for already applied internships based on fuzzy matching
+        already_applied = check_already_applied(internships, applied_internships)
+        
+        if already_applied:
+            st.subheader("You Have Already Applied To:")
+            already_applied_df = pd.DataFrame(already_applied, columns=["New Internship Info", "Already Applied Internship", "Fuzzy Match Score"])
+            st.dataframe(already_applied_df)
+        else:
+            st.info("No duplicate applications found.")
+        
+        # Combine all tables into one and write it back to Excel
+        write_combined_to_excel(above_threshold, below_threshold, not_found, already_applied, output_file)
+        st.success(f"Combined data has been saved to {output_file}.")
 
 if __name__ == "__main__":
     main()
