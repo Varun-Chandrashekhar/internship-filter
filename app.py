@@ -81,21 +81,6 @@ def check_already_applied(new_internships, applied_internships, fuzzy_threshold=
     
     return already_applied
 
-# Function to write the combined table back to Excel
-def write_combined_to_excel(above_threshold, below_threshold, not_found, already_applied, output_file):
-    with pd.ExcelWriter(output_file, mode="w", engine="xlsxwriter") as writer:
-        # Create dataframes from the categorized data
-        above_df = pd.DataFrame(above_threshold, columns=["Company Info", "Hourly Pay"])
-        below_df = pd.DataFrame(below_threshold, columns=["Company Info", "Hourly Pay"])
-        not_found_df = pd.DataFrame(not_found, columns=["Company Info"])
-        already_applied_df = pd.DataFrame(already_applied, columns=["New Internship Info", "Already Applied Internship", "Fuzzy Match Score"])
-        
-        # Write each section into a separate sheet or different parts of the Excel file
-        above_df.to_excel(writer, sheet_name="Above Threshold", index=False)
-        below_df.to_excel(writer, sheet_name="Below Threshold", index=False)
-        not_found_df.to_excel(writer, sheet_name="Not Found", index=False)
-        already_applied_df.to_excel(writer, sheet_name="Already Applied", index=False)
-
 # Main Streamlit app
 def main():
     st.title("Internship Salary Checker with Fuzzy Matching")
@@ -112,7 +97,6 @@ def main():
     
     # File path for Excel data
     excel_file = "levels_data.xlsx"
-    output_file = "output_combined_data.xlsx"
 
     # Read the Excel data
     excel_data = read_excel_data(excel_file)
@@ -186,10 +170,17 @@ def main():
             st.dataframe(already_applied_df)
         else:
             st.info("No duplicate applications found.")
+
+        # Combine all tables into one complete table to display
+        st.subheader("Complete Combined Table:")
+
+        combined_above = pd.DataFrame(above_threshold, columns=["Company Info", "Hourly Pay"])
+        combined_below = pd.DataFrame(below_threshold, columns=["Company Info", "Hourly Pay"])
+        combined_not_found = pd.DataFrame(not_found, columns=["Company Info"])
+        combined_applied = pd.DataFrame(already_applied, columns=["New Internship Info", "Already Applied Internship", "Fuzzy Match Score"])
         
-        # Combine all tables into one and write it back to Excel
-        write_combined_to_excel(above_threshold, below_threshold, not_found, already_applied, output_file)
-        st.success(f"Combined data has been saved to {output_file}.")
+        combined_table = pd.concat([combined_above, combined_below, combined_not_found, combined_applied], ignore_index=True)
+        st.dataframe(combined_table)
 
 if __name__ == "__main__":
     main()
