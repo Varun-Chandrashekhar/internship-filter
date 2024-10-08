@@ -79,11 +79,9 @@ def check_already_applied(new_internships, applied_internships, fuzzy_threshold=
     already_applied = []
     
     for new_internship in new_internships:
-        for applied in applied_internships:
-            # Use fuzzy matching to compare the new internship with the applied one
-            score = process.extractOne(new_internship, [applied])[1]
-            if score >= fuzzy_threshold:
-                already_applied.append((new_internship, applied, score))
+        best_match, score = process.extractOne(new_internship, applied_internships)
+        if score >= fuzzy_threshold:
+            already_applied.append((new_internship, best_match, score))
     
     return already_applied
 
@@ -108,17 +106,17 @@ else:
     # Calculate and display the percentage of companies above the threshold
     percentage_above_threshold = calculate_threshold_percentage(excel_data, threshold)
     st.sidebar.write(f"Your threshold is in the top {percentage_above_threshold:.2f}% of company pays on Levels.fyi.")
-
+    
     # Display Levels data in the sidebar
     st.sidebar.subheader("Levels.fyi Company Data:")
     st.sidebar.dataframe(excel_data)
-
+    
     # Links for additional resources
     st.sidebar.subheader("Useful Links:")
     st.sidebar.markdown("[Internship Tracker](https://docs.google.com/spreadsheets/d/1tlUVgtnJBWpaaiLY-QeU8A8gMVolEGyQl6fRaUqpptg/edit?usp=sharing)")
     st.sidebar.markdown("[Pit CSC GitHub Repo](https://github.com/SimplifyJobs/Summer2025-Internships)")
     st.sidebar.markdown("[Ouckah GitHub Repo](https://github.com/Ouckah/Summer2025-Internships)")
-
+    
     # Input for internships the user has already applied to
     applied_internships_input = st.text_area(
         "Paste the internships you've already applied to:",
@@ -142,9 +140,28 @@ else:
             # Split user input into a list of company names
             internships = internship_input.strip().split('\n')
 
-            # Categorize internships based on user-defined threshold
-            above_threshold, below_threshold, not_found = categorize_internships(internships, excel_data, threshold)
-
+            # Check for already applied internships based on fuzzy matching
+            already_applied_matches = check_already_applied(internships, applied_internships)
+            
+            # Prepare list for already applied internships with pay info
+            already_applied_with_pay = []
+            applied_internship_names = []
+            for new_internship, applied, score in already_applied_matches:
+                company_name = extract_company_name(new_internship)
+                matched_row = match_highest_paying_company(company_name, excel_data, threshold=80)
+                if matched_row is not None:
+                    pay = matched_row['Hourly Salary']
+                else:
+                    pay = 0  # Default pay if not found
+                already_applied_with_pay.append((new_internship, f"${pay}/hr" if pay > 0 else "$0/hr"))
+                applied_internship_names.append(new_internship)
+            
+            # Remove already applied internships from the main internships list
+            remaining_internships = [i for i in internships if i not in applied_internship_names]
+            
+            # Categorize remaining internships based on user-defined threshold
+            above_threshold, below_threshold, not_found = categorize_internships(remaining_internships, excel_data, threshold)
+            
             # Display results
             st.subheader(f"Internships That Pay Above Your Threshold (${threshold}/hr):")
             if above_threshold:
@@ -152,38 +169,50 @@ else:
                 st.dataframe(above_df)
             else:
                 st.info(f"No internships found that meet the pay threshold of ${threshold}/hr.")
-
+    
             st.subheader(f"Internships That Pay Below Your Threshold (${threshold}/hr):")
             if below_threshold:
                 below_df = pd.DataFrame(below_threshold, columns=["Company Info", "Hourly Pay"])
                 st.dataframe(below_df)
             else:
                 st.info(f"No internships found that pay below the threshold of ${threshold}/hr.")
-
+    
             st.subheader("Internships That We Couldn't Find Data For:")
             if not_found:
                 not_found_df = pd.DataFrame(not_found, columns=["Company Info"])
                 st.dataframe(not_found_df)
             else:
                 st.info("All internships were found in the data.")
-
-            # Check for already applied internships based on fuzzy matching
-            already_applied = check_already_applied(internships, applied_internships)
-            
-            if already_applied:
+    
+            # Display Already Applied Internships with Pay Information
+            if already_applied_with_pay:
                 st.subheader("You Have Already Applied To:")
-                already_applied_df = pd.DataFrame(already_applied, columns=["New Internship Info", "Already Applied Internship", "Fuzzy Match Score"])
+                already_applied_df = pd.DataFrame(already_applied_with_pay, columns=["Internship Info", "Hourly Pay"])
                 st.dataframe(already_applied_df)
             else:
                 st.info("No duplicate applications found.")
-
+    
             # Combine all tables into one complete table to display
             st.subheader("Complete Combined Table:")
-
+    
+            # Adding a column to indicate the category
             combined_above = pd.DataFrame(above_threshold, columns=["Company Info", "Hourly Pay"])
-            combined_below = pd.DataFrame(below_threshold, columns=["Company Info", "Hourly Pay"])
-            combined_not_found = pd.DataFrame(not_found, columns=["Company Info"])
-            combined_applied = pd.DataFrame(already_applied, columns=["New Internship Info", "Already Applied Internship", "Fuzzy Match Score"])
+            combined_above['Category'] = 'Above Threshold'
             
+            combined_below = pd.DataFrame(below_threshold, columns=["Company Info", "Hourly Pay"])
+            combined_below['Category'] = 'Below Threshold'
+            
+            combined_not_found = pd.DataFrame(not_found, columns=["Company Info"])
+            combined_not_found['Hourly Pay'] = 'N/A'
+            combined_not_found['Category'] = 'Not Found'
+            
+            combined_applied = pd.DataFrame(already_applied_with_pay, columns=["Company Info", "Hourly Pay"])
+            combined_applied['Category'] = 'Already Applied'
+            
+            # Concatenate all dataframes
             combined_table = pd.concat([combined_above, combined_below, combined_not_found, combined_applied], ignore_index=True)
+            
+            # Rearrange columns for better readability
+            combined_table = combined_table[['Company Info', 'Hourly Pay', 'Category']]
+            
             st.dataframe(combined_table)
