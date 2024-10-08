@@ -143,21 +143,27 @@ else:
             # Check for already applied internships based on fuzzy matching
             already_applied_matches = check_already_applied(internships, applied_internships)
             
-            # Prepare list for already applied internships with pay info
-            already_applied_with_pay = []
-            applied_internship_names = []
-            for new_internship, applied, score in already_applied_matches:
+            # Prepare list for already applied internships with pay info, matched name, and score
+            already_applied_with_details = []
+            matched_applied_internships = []  # To keep track for exclusion
+            
+            for new_internship, matched_applied, score in already_applied_matches:
                 company_name = extract_company_name(new_internship)
                 matched_row = match_highest_paying_company(company_name, excel_data, threshold=80)
                 if matched_row is not None:
                     pay = matched_row['Hourly Salary']
                 else:
                     pay = 0  # Default pay if not found
-                already_applied_with_pay.append((new_internship, f"${pay}/hr" if pay > 0 else "$0/hr"))
-                applied_internship_names.append(new_internship)
+                already_applied_with_details.append({
+                    "Internship Info": new_internship,
+                    "Matched Applied Internship": matched_applied,
+                    "Fuzzy Match Score": score,
+                    "Hourly Pay": f"${pay}/hr" if pay > 0 else "$0/hr"
+                })
+                matched_applied_internships.append(new_internship)
             
             # Remove already applied internships from the main internships list
-            remaining_internships = [i for i in internships if i not in applied_internship_names]
+            remaining_internships = [i for i in internships if i not in matched_applied_internships]
             
             # Categorize remaining internships based on user-defined threshold
             above_threshold, below_threshold, not_found = categorize_internships(remaining_internships, excel_data, threshold)
@@ -184,10 +190,10 @@ else:
             else:
                 st.info("All internships were found in the data.")
     
-            # Display Already Applied Internships with Pay Information
-            if already_applied_with_pay:
+            # Display Already Applied Internships with Pay Information, Matched Name, and Score
+            if already_applied_with_details:
                 st.subheader("You Have Already Applied To:")
-                already_applied_df = pd.DataFrame(already_applied_with_pay, columns=["Internship Info", "Hourly Pay"])
+                already_applied_df = pd.DataFrame(already_applied_with_details)
                 st.dataframe(already_applied_df)
             else:
                 st.info("No duplicate applications found.")
@@ -206,13 +212,37 @@ else:
             combined_not_found['Hourly Pay'] = 'N/A'
             combined_not_found['Category'] = 'Not Found'
             
-            combined_applied = pd.DataFrame(already_applied_with_pay, columns=["Company Info", "Hourly Pay"])
+            # Prepare the Already Applied data with additional details
+            combined_applied = pd.DataFrame(already_applied_with_details)
+            combined_applied.rename(columns={
+                "Internship Info": "Company Info",
+                "Matched Applied Internship": "Matched Applied Internship",
+                "Fuzzy Match Score": "Fuzzy Match Score",
+                "Hourly Pay": "Hourly Pay"
+            }, inplace=True)
             combined_applied['Category'] = 'Already Applied'
+            
+            # For consistency, ensure all dataframes have the same columns
+            # Add missing columns to combined_above, combined_below, combined_not_found
+            combined_above['Matched Applied Internship'] = ''
+            combined_above['Fuzzy Match Score'] = ''
+            
+            combined_below['Matched Applied Internship'] = ''
+            combined_below['Fuzzy Match Score'] = ''
+            
+            combined_not_found['Matched Applied Internship'] = ''
+            combined_not_found['Fuzzy Match Score'] = ''
+            
+            # Reorder columns to match
+            combined_above = combined_above[['Company Info', 'Hourly Pay', 'Matched Applied Internship', 'Fuzzy Match Score', 'Category']]
+            combined_below = combined_below[['Company Info', 'Hourly Pay', 'Matched Applied Internship', 'Fuzzy Match Score', 'Category']]
+            combined_not_found = combined_not_found[['Company Info', 'Hourly Pay', 'Matched Applied Internship', 'Fuzzy Match Score', 'Category']]
+            combined_applied = combined_applied[['Company Info', 'Hourly Pay', 'Matched Applied Internship', 'Fuzzy Match Score', 'Category']]
             
             # Concatenate all dataframes
             combined_table = pd.concat([combined_above, combined_below, combined_not_found, combined_applied], ignore_index=True)
             
             # Rearrange columns for better readability
-            combined_table = combined_table[['Company Info', 'Hourly Pay', 'Category']]
+            combined_table = combined_table[['Company Info', 'Hourly Pay', 'Matched Applied Internship', 'Fuzzy Match Score', 'Category']]
             
             st.dataframe(combined_table)
