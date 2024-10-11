@@ -75,7 +75,7 @@ def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshol
     return above_threshold, below_threshold, not_found
 
 # Function to check for duplicates with previously applied internships
-def check_already_applied(new_internships, applied_internships, fuzzy_threshold=95):
+def check_already_applied(new_internships, applied_internships, fuzzy_threshold=90):
     already_applied = []
     
     for new_internship in new_internships:
