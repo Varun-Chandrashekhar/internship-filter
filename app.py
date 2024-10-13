@@ -50,7 +50,7 @@ def calculate_threshold_percentage(excel_data, threshold):
     return 100 - percentage  # Percentage above the threshold
 
 # Function to categorize internships based on pay using fuzzy matching
-def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshold=80):
+def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshold=90):
     above_threshold = []
     below_threshold = []
     not_found = []
