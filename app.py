@@ -25,7 +25,7 @@ def extract_company_name(text):
     return text.strip()
 
 # Function to match based on the first word and choose the highest-paying match
-def match_highest_paying_company(company_name, excel_data, threshold=80):
+def match_highest_paying_company(company_name, excel_data, threshold=95):
     cleaned_name = clean_company_name(company_name)
     
     # Fuzzy matching for potential matches
@@ -50,7 +50,7 @@ def calculate_threshold_percentage(excel_data, threshold):
     return 100 - percentage  # Percentage above the threshold
 
 # Function to categorize internships based on pay using fuzzy matching
-def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshold=90):
+def categorize_internships(internships, excel_data, threshold=50, fuzzy_threshold=95):
     above_threshold = []
     below_threshold = []
     not_found = []
@@ -149,7 +149,7 @@ else:
             
             for new_internship, matched_applied, score in already_applied_matches:
                 company_name = extract_company_name(new_internship)
-                matched_row = match_highest_paying_company(company_name, excel_data, threshold=80)
+                matched_row = match_highest_paying_company(company_name, excel_data, threshold=95)
                 if matched_row is not None:
                     pay = matched_row['Hourly Salary']
                 else:
